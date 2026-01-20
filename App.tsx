@@ -484,6 +484,22 @@ const App: React.FC = () => {
                   <input required placeholder="Магистральная" value={projectEditForm.street || ''} onChange={e => setProjectEditForm({...projectEditForm, street: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-bold text-slate-700 border border-slate-100" />
                 </div>
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Телефон клиента</label>
+                  <div className="relative">
+                    <Phone size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
+                    <input required placeholder="8 900..." value={projectEditForm.phone || ''} onChange={e => setProjectEditForm({...projectEditForm, phone: e.target.value})} className="w-full p-4 pl-10 bg-slate-50 rounded-xl font-bold text-slate-700 border border-slate-100 outline-none" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Telegram (@username)</label>
+                  <div className="relative">
+                    <Send size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
+                    <input required placeholder="@name" value={projectEditForm.telegram || ''} onChange={e => setProjectEditForm({...projectEditForm, telegram: e.target.value})} className="w-full p-4 pl-10 bg-slate-50 rounded-xl font-bold text-slate-700 border border-slate-100 outline-none" />
+                  </div>
+                </div>
+              </div>
               <button type="submit" className="w-full bg-blue-600 text-white font-black py-5 rounded-2xl uppercase text-[10px] sm:text-[11px] shadow-xl hover:bg-blue-700 transition-all">Сохранить</button>
             </form>
           </div>
