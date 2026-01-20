@@ -122,17 +122,22 @@ const App: React.FC = () => {
   const projectFileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFileCategory, setPendingFileCategory] = useState<FileCategory>(FileCategory.DOCUMENT);
 
-  // Обработка входящей конфигурации из URL (Invite Link)
+  // Импорт конфига из URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const configData = params.get('config');
     if (configData) {
       try {
         const decoded = atob(configData);
-        localStorage.setItem(STORAGE_KEYS.GH_CONFIG, decoded);
-        // Чистим URL
-        window.history.replaceState({}, document.title, window.location.pathname);
-        alert("Настройки синхронизации успешно импортированы!");
+        // Проверка структуры
+        const config = JSON.parse(decoded);
+        if (config.token && config.repo) {
+          localStorage.setItem(STORAGE_KEYS.GH_CONFIG, decoded);
+          window.history.replaceState({}, document.title, window.location.pathname);
+          alert("Настройки синхронизации успешно импортированы!");
+          // Перезагрузка для обновления всех компонентов
+          window.location.reload();
+        }
       } catch (e) {
         console.error("Link import failed", e);
       }
