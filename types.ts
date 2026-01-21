@@ -1,5 +1,5 @@
 
-export const APP_VERSION = '1.1.1';
+export const APP_VERSION = '1.1.2';
 export const STANDARD_NAME = 'Zodchiy Standard baseline';
 
 export enum UserRole {
@@ -82,7 +82,7 @@ export interface Project {
   progress: number;
   status: ProjectStatus;
   comments?: Comment[];
-  updatedAt?: string; // Для синхронизации
+  updatedAt?: string;
 }
 
 export interface AIAnalysisResult {
@@ -104,7 +104,7 @@ export interface Task {
   evidenceCount: number;
   comments?: Comment[];
   aiAnalysis?: AIAnalysisResult;
-  updatedAt?: string; // Для синхронизации
+  updatedAt?: string;
 }
 
 export interface GithubConfig {
