@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -6,9 +7,9 @@
     <meta name="theme-color" content="#2563eb">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="description" content="ЗОДЧИЙ: Система управления строительством v1.1.9">
+    <meta name="description" content="ЗОДЧИЙ: Система управления строительством v1.2.0">
     
-    <title>ЗОДЧИЙ • v1.1.9</title>
+    <title>ЗОДЧИЙ • v1.2.0</title>
     
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/4333/4333645.png">
@@ -49,28 +50,6 @@
         .safe-area-bottom {
             padding-bottom: var(--sab);
         }
-        .animate-in {
-            animation-duration: 0.3s;
-            animation-fill-mode: both;
-        }
-        @keyframes slideInRight {
-            from { transform: translateX(20px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        .slide-in-from-right-4 {
-            animation-name: slideInRight;
-        }
-        .scrollbar-hide::-webkit-scrollbar {
-            display: none;
-        }
-        .scrollbar-hide {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-        .min-h-screen {
-            min-height: -webkit-fill-available;
-            min-height: 100vh;
-        }
     </style>
 <script type="importmap">
 {
@@ -88,7 +67,6 @@
 </head>
 <body>
     <div id="root"></div>
-    <!-- Zodchiy Standard v1.1.9 -->
     <script type="module" src="/index.tsx"></script>
 </body>
 </html>

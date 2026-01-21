@@ -1,4 +1,6 @@
-export const APP_VERSION = '1.1.9';
+
+
+export const APP_VERSION = '1.2.0';
 export const STANDARD_NAME = 'Zodchiy Standard baseline';
 
 export enum UserRole {
@@ -112,26 +114,6 @@ export interface GithubConfig {
   path: string; 
 }
 
-export interface GlobalChatMessage {
-  id: number;
-  userId: number;
-  username: string;
-  role: UserRole;
-  text: string;
-  createdAt: string;
-}
-
-export interface AppNotification {
-  id: number;
-  type: 'review' | 'rework' | 'done' | 'message';
-  projectTitle: string;
-  taskTitle: string;
-  message: string;
-  targetRole: UserRole;
-  isRead: boolean;
-  createdAt: string;
-}
-
 export interface AppSnapshot {
   version: string;
   timestamp: string;
@@ -141,9 +123,24 @@ export interface AppSnapshot {
   config: GithubConfig;
 }
 
-export interface SyncResponse {
-  projects: Project[];
-  tasks: Task[];
-  appVersion: string;
-  lastUpdated: number;
+// Fixed missing interface export for AppNotification
+export interface AppNotification {
+  id: number;
+  type: 'review' | 'done' | 'rework' | string;
+  projectTitle: string;
+  taskTitle: string;
+  message: string;
+  targetRole: UserRole;
+  isRead: boolean;
+  createdAt: string;
+}
+
+// Fixed missing interface export for GlobalChatMessage
+export interface GlobalChatMessage {
+  id: number;
+  userId: number;
+  username: string;
+  role: UserRole;
+  text: string;
+  createdAt: string;
 }
