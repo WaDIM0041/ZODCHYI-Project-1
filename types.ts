@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.3.9';
+export const APP_VERSION = '1.4.0';
 export const STANDARD_NAME = 'Zodchiy Enterprise Core';
 
 export enum UserRole {
