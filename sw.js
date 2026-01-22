@@ -1,5 +1,5 @@
-const CACHE_NAME = 'zodchiy-cache-v1.5.0';
-const ASSETS = [
+const CACHE_NAME = 'zodchiy-core-v1.5.3';
+const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/manifest.json',
@@ -7,36 +7,46 @@ const ASSETS = [
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&display=swap'
 ];
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then(c => c.addAll(ASSETS))
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
   );
   self.skipWaiting();
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then(keys => 
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+      );
+    })
   );
   return self.clients.claim();
 });
 
-self.addEventListener('fetch', (e) => {
-  if (e.request.url.includes('/api/') || e.request.url.includes('data:') || e.request.url.includes('blob:')) {
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+
+  // Динамические данные (API/GitHub) - всегда сеть
+  if (url.hostname.includes('api.github.com') || url.pathname.includes('/api/')) {
     return;
   }
 
-  e.respondWith(
-    caches.match(e.request).then(cached => {
+  // Для остальных - кэш, потом сеть (быстрый старт)
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
       if (cached) return cached;
-      
-      return fetch(e.request).then(response => {
-        if (response.ok && (e.request.url.includes('esm.sh') || e.request.url.includes('cdn.tailwindcss.com'))) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, copy));
+      return fetch(event.request).then((response) => {
+        if (!response || response.status !== 200 || response.type !== 'basic') {
+          return response;
         }
+        const responseToCache = response.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          if (!event.request.url.includes('data:') && !event.request.url.includes('blob:')) {
+            cache.put(event.request, responseToCache);
+          }
+        });
         return response;
       });
     })
