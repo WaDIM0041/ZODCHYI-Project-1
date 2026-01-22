@@ -62,6 +62,7 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState(false);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const syncLockRef = useRef(false);
 
@@ -147,6 +148,13 @@ const App: React.FC = () => {
       return next;
     });
   }, []);
+
+  const handleRefreshApp = () => {
+    setIsRefreshing(true);
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
 
   // БИЗНЕС-ЛОГИКА
   const addProject = (p: Partial<Project>) => {
@@ -341,11 +349,13 @@ const App: React.FC = () => {
 
   return (
     <div className={`flex flex-col h-full overflow-hidden ${activeRole === UserRole.ADMIN ? 'bg-[#0f172a]' : 'bg-[#f8fafc]'}`}>
-      {isProcessingFile && (
+      {(isProcessingFile || isRefreshing) && (
         <div className="fixed inset-0 z-[999] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-4">
             <RefreshCw className="text-blue-600 animate-spin" size={32} />
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-800">Обработка данных...</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-800">
+              {isRefreshing ? 'Обновление интерфейса...' : 'Обработка данных...'}
+            </p>
           </div>
         </div>
       )}
@@ -373,12 +383,23 @@ const App: React.FC = () => {
             <Wifi size={14} className={syncError ? 'text-rose-500' : 'text-emerald-500'} />
             <Cloud size={14} className={isSyncing ? 'text-blue-500 animate-pulse' : 'text-slate-300'} />
           </div>
+          
+          {/* ОБНОВИТЬ */}
+          <button 
+            onClick={handleRefreshApp}
+            title="Обновить приложение"
+            className="p-2.5 bg-blue-50 text-blue-600 rounded-xl active:scale-90 transition-all hover:bg-blue-600 hover:text-white group"
+          >
+            <RefreshCw size={18} className="group-active:rotate-180 transition-transform duration-500" />
+          </button>
+
           <button onClick={() => setShowNotifications(true)} className="relative p-2.5 bg-slate-100 rounded-xl text-slate-500 active:scale-90 transition-all">
             <Bell size={18} />
             {db.notifications.some(n => !n.isRead) && (
               <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 border-2 border-white rounded-full"></span>
             )}
           </button>
+          
           <button onClick={handleLogout} className="p-2.5 bg-rose-50 text-rose-500 rounded-xl active:scale-90 transition-all">
             <LogOut size={18} />
           </button>
