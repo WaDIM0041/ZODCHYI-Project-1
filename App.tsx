@@ -116,6 +116,46 @@ const App: React.FC = () => {
 
   const isMasterMode = activeRole === UserRole.ADMIN;
 
+  const handleApplyInvite = useCallback((code: string) => {
+    try {
+      const invite: InvitePayload = JSON.parse(fromBase64(code));
+      if (invite.token && invite.repo && invite.role) {
+        const newGhConfig: GithubConfig = { 
+          token: invite.token, 
+          repo: invite.repo, 
+          path: invite.path || 'zodchiy_db.json' 
+        };
+        localStorage.setItem(STORAGE_KEYS.GH_CONFIG, JSON.stringify(newGhConfig));
+        
+        // Находим пользователя по роли из инвайта
+        const targetUser = db.users.find(u => u.role === invite.role) || db.users[0];
+        
+        setCurrentUser(targetUser);
+        setActiveRole(targetUser.role);
+        localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(targetUser));
+        
+        // Очищаем URL от параметров после успешного входа
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error("Invite application failed", e);
+      return false;
+    }
+  }, [db.users]);
+
+  // Эффект для обработки ссылки-приглашения при загрузке
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const inviteCode = params.get('invite');
+    if (inviteCode) {
+      setTimeout(() => {
+        handleApplyInvite(inviteCode);
+      }, 500); // Небольшая задержка для плавности
+    }
+  }, [handleApplyInvite]);
+
   const dbSize = useMemo(() => {
     const str = JSON.stringify(db);
     const bytes = new Blob([str]).size;
@@ -150,31 +190,6 @@ const App: React.FC = () => {
   const handleImportData = useCallback((data: AppSnapshot) => {
     setDb(prev => smartMerge(data, prev));
   }, [smartMerge]);
-
-  const handleApplyInvite = useCallback((code: string) => {
-    try {
-      const invite: InvitePayload = JSON.parse(fromBase64(code));
-      if (invite.token && invite.repo && invite.role) {
-        const newGhConfig: GithubConfig = { 
-          token: invite.token, 
-          repo: invite.repo, 
-          path: invite.path || 'zodchiy_db.json' 
-        };
-        localStorage.setItem(STORAGE_KEYS.GH_CONFIG, JSON.stringify(newGhConfig));
-        const targetUser = db.users.find(u => u.role === invite.role && u.username === invite.username) 
-                          || db.users.find(u => u.role === invite.role)
-                          || db.users[0];
-        setCurrentUser(targetUser);
-        setActiveRole(targetUser.role);
-        localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(targetUser));
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.error("Invite application failed", e);
-      return false;
-    }
-  }, [db.users]);
 
   useEffect(() => {
     const pollInterval = setInterval(async () => {
@@ -238,23 +253,17 @@ const App: React.FC = () => {
     try {
       if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
         const registrations = await navigator.serviceWorker.getRegistrations();
-        // Используем Promise.all с обработкой ошибок для каждого обновления
         await Promise.all(registrations.map(async (registration) => {
           try {
             await registration.update();
-          } catch (e) {
-            // Игнорируем ошибки индивидуальных регистраций
-          }
+          } catch (e) {}
         }));
       }
     } catch (e) {
-      // Игнорируем ошибку "The document is in an invalid state", 
-      // так как она не критична перед перезагрузкой страницы.
       if (!(e instanceof Error && e.message.includes('invalid state'))) {
         console.warn("SW Update warning:", e);
       }
     } finally {
-      // Всегда перезагружаем страницу для применения обновлений
       window.location.reload();
     }
   };

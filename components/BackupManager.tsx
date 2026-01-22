@@ -1,5 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
-import { Database, Github, Download, Upload, RefreshCw, CheckCircle2, CloudLightning, Zap, ShieldAlert, Key, AlertTriangle, ShieldCheck, Search, Activity, Terminal, Share2, ClipboardCheck, Copy, Users } from 'lucide-react';
+// Added missing 'Eye' icon to the lucide-react imports
+import { Database, Github, Download, Upload, RefreshCw, CheckCircle2, CloudLightning, Zap, ShieldAlert, Key, AlertTriangle, ShieldCheck, Search, Activity, Terminal, Share2, ClipboardCheck, Copy, Users, Link as LinkIcon, Eye } from 'lucide-react';
 import { User, GithubConfig, AppSnapshot, APP_VERSION, UserRole, ROLE_LABELS, InvitePayload } from '../types.ts';
 import { STORAGE_KEYS } from '../App.tsx';
 
@@ -20,9 +22,8 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ currentUser, curre
   const [syncStatus, setSyncStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [lastError, setLastError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   
-  // Новое: выбор роли для инвайт-кода
   const [selectedInviteRole, setSelectedInviteRole] = useState<UserRole>(UserRole.FOREMAN);
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ currentUser, curre
     ));
   };
 
-  const generateInviteCode = () => {
+  const generateInviteLink = () => {
     const payload: InvitePayload = {
       token: ghConfig.token,
       repo: ghConfig.repo,
@@ -44,9 +45,12 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ currentUser, curre
       username: currentUser?.username || 'Admin'
     };
     const code = toBase64(JSON.stringify(payload));
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    // Создаем полную ссылку: текущий адрес + параметр invite
+    const fullLink = `${window.location.origin}${window.location.pathname}?invite=${code}`;
+    
+    navigator.clipboard.writeText(fullLink);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 3000);
   };
 
   const handlePushToGithub = async () => {
@@ -106,7 +110,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ currentUser, curre
       if (res.ok) {
         const data = await res.json();
         const rawContent = data.content.replace(/\s/g, '');
-        // Helper to handle both standard atob and URL-safe base64 if needed
         const decoded = decodeURIComponent(Array.prototype.map.call(atob(rawContent), (c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
         onDataImport(JSON.parse(decoded));
         setSyncStatus('success');
@@ -135,47 +138,49 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ currentUser, curre
         </div>
       </div>
 
-      {/* НОВАЯ СЕКЦИЯ: ГЕНЕРАЦИЯ КЛЮЧА ПРИГЛАШЕНИЯ */}
       <div className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-sm">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Share2 size={18} /></div>
-          <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-800">Создать приглашение</h3>
+          <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-800">Ссылка для сотрудника</h3>
         </div>
         
         <div className="space-y-4">
           <p className="text-[10px] font-bold text-slate-500 leading-relaxed uppercase tracking-tight">
-            Выберите роль, которую получит сотрудник при входе по этому ключу:
+            Выберите роль. Система создаст ссылку, по которой сотрудник войдет автоматически:
           </p>
           
           <div className="grid grid-cols-2 gap-2">
             {Object.entries(ROLE_LABELS).map(([roleKey, label]) => {
               const role = roleKey as UserRole;
-              if (role === UserRole.ADMIN) return null; // Админы создаются только вручную
+              if (role === UserRole.ADMIN) return null;
               return (
                 <button
                   key={role}
                   onClick={() => setSelectedInviteRole(role)}
-                  className={`p-4 rounded-2xl border text-[9px] font-black uppercase tracking-widest transition-all ${
+                  className={`p-4 rounded-2xl border text-[9px] font-black uppercase tracking-widest transition-all flex flex-col items-center gap-2 ${
                     selectedInviteRole === role 
                     ? 'bg-blue-600 border-blue-600 text-white shadow-lg' 
-                    : 'bg-white border-slate-100 text-slate-400'
+                    : 'bg-white border-slate-100 text-slate-400 hover:border-blue-200'
                   }`}
                 >
-                  {label}
+                   {role === UserRole.MANAGER && <Activity size={14} />}
+                   {role === UserRole.FOREMAN && <Users size={14} />}
+                   {role === UserRole.SUPERVISOR && <Eye size={14} />}
+                   {label}
                 </button>
               );
             })}
           </div>
 
           <button 
-            onClick={generateInviteCode}
+            onClick={generateInviteLink}
             disabled={!ghConfig.token}
             className={`w-full py-5 rounded-2xl flex items-center justify-center gap-3 font-black text-[10px] uppercase tracking-widest transition-all shadow-xl active:scale-95 ${
-              copied ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white shadow-slate-200'
+              linkCopied ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white shadow-slate-200'
             } disabled:opacity-50`}
           >
-            {copied ? <ClipboardCheck size={20} /> : <Copy size={20} />}
-            {copied ? 'Ключ скопирован!' : 'Создать и копировать ключ'}
+            {linkCopied ? <ClipboardCheck size={20} /> : <LinkIcon size={20} />}
+            {linkCopied ? 'Ссылка доступа скопирована!' : 'Скопировать ссылку доступа'}
           </button>
           {!ghConfig.token && <p className="text-[8px] text-rose-500 font-bold text-center uppercase">Сначала настройте GitHub ниже</p>}
         </div>
