@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   UserRole, Task, TaskStatus, Project, User, ProjectStatus, 
-  ROLE_LABELS, APP_VERSION, AppNotification, GlobalChatMessage, AppSnapshot, FileCategory, GithubConfig, InvitePayload 
+  ROLE_LABELS, APP_VERSION, AppNotification, AppSnapshot, FileCategory, GithubConfig, InvitePayload 
 } from './types.ts';
 import TaskDetails from './components/TaskDetails.tsx';
 import { AdminPanel } from './components/AdminPanel.tsx';
@@ -11,7 +11,6 @@ import { ProjectView } from './components/ProjectView.tsx';
 import { ProjectForm } from './components/ProjectForm.tsx';
 import { AIAssistant } from './components/AIAssistant.tsx';
 import { NotificationCenter } from './components/NotificationCenter.tsx';
-import { GlobalChat } from './components/GlobalChat.tsx';
 import { Logo } from './components/Logo.tsx';
 import { 
   LayoutGrid, 
@@ -20,18 +19,17 @@ import {
   CheckSquare,
   RefreshCw,
   Bell,
-  MessageSquare,
   Cloud,
   Wifi,
-  Zap,
   X,
   Info
 } from 'lucide-react';
 
+// СТАБИЛЬНЫЕ КЛЮЧИ: Не меняются при обновлении версии приложения
 export const STORAGE_KEYS = {
-  MASTER_STATE: `zod_master_v1.5.6`,
-  AUTH_USER: `zod_auth_v1.5.6`,
-  GH_CONFIG: `zod_gh_v1.5.6`
+  MASTER_STATE: 'zodchiy_enterprise_database_stable_v1',
+  AUTH_USER: 'zodchiy_auth_session_stable_v1',
+  GH_CONFIG: 'zodchiy_cloud_config_stable_v1'
 };
 
 const toBase64 = (str: string) => btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (m, p1) => String.fromCharCode(parseInt(p1, 16))));
@@ -57,10 +55,14 @@ const App: React.FC = () => {
   const lastCloudTimeRef = useRef<number>(0);
 
   const [db, setDb] = useState<AppSnapshot>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.MASTER_STATE);
+    let saved = localStorage.getItem(STORAGE_KEYS.MASTER_STATE);
+    if (!saved) saved = localStorage.getItem('zod_master_v1.5.9');
+
     try {
-      const parsed = saved ? JSON.parse(saved) : null;
-      if (parsed && parsed.version === APP_VERSION) return parsed;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { ...parsed, version: APP_VERSION };
+      }
       return {
         version: APP_VERSION,
         timestamp: new Date().toISOString(),
@@ -72,36 +74,36 @@ const App: React.FC = () => {
           { id: 3, username: 'Технадзор', role: UserRole.SUPERVISOR, password: '123' }
         ],
         notifications: [],
-        chatMessages: []
       };
-    } catch { return { version: APP_VERSION, timestamp: new Date().toISOString(), projects: [], tasks: [], users: [], notifications: [], chatMessages: [] }; }
+    } catch { 
+      return { version: APP_VERSION, timestamp: new Date().toISOString(), projects: [], tasks: [], users: [], notifications: [] }; 
+    }
   });
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'admin' | 'sync' | 'chat' | 'profile'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'admin' | 'sync' | 'profile'>('dashboard');
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  const addToast = (title: string, msg: string, type: string = 'info') => {
-    const id = generateUID('toast');
-    setToasts(prev => [...prev, { id, title, msg, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
-  };
-
-  const pushToCloud = useCallback(async (snapshot: AppSnapshot) => {
+  const pushToCloud = useCallback(async (snapshot: AppSnapshot, retryCount = 0) => {
     const raw = localStorage.getItem(STORAGE_KEYS.GH_CONFIG);
     if (!raw) return;
+    
     try {
       syncLockRef.current = true;
       setIsSyncing(true);
       const cfg: GithubConfig = JSON.parse(raw);
-      // Добавляем timestamp в URL для обхода кэша Vercel/GitHub
-      const url = `https://api.github.com/repos/${cfg.repo}/contents/${cfg.path}?t=${Date.now()}`;
-      const headers = { 'Authorization': `Bearer ${cfg.token.trim()}`, 'Accept': 'application/vnd.github+json' };
+      const url = `https://api.github.com/repos/${cfg.repo}/contents/${cfg.path}?nonce=${Date.now()}`;
+      const headers = { 
+        'Authorization': `Bearer ${cfg.token.trim()}`, 
+        'Accept': 'application/vnd.github+json',
+        'Cache-Control': 'no-cache'
+      };
       
       const getRes = await fetch(url, { headers, cache: 'no-store' });
-      const sha = getRes.ok ? (await getRes.json()).sha : "";
+      const getJson = await getRes.json();
+      const sha = getRes.ok ? getJson.sha : "";
       
       const res = await fetch(url, {
         method: 'PUT',
@@ -112,34 +114,36 @@ const App: React.FC = () => {
           sha: sha || undefined 
         })
       });
+
       if (res.ok) {
         lastCloudTimeRef.current = new Date(snapshot.timestamp).getTime();
         setSyncError(false);
+      } else if (res.status === 409 && retryCount < 3) {
+        syncLockRef.current = false;
+        await pushToCloud(snapshot, retryCount + 1);
+      } else {
+        throw new Error('Push failed');
       }
-    } catch { setSyncError(true); }
-    finally { setIsSyncing(false); syncLockRef.current = false; }
+    } catch (e) { 
+      setSyncError(true); 
+    } finally { 
+      setIsSyncing(false); 
+      syncLockRef.current = false; 
+    }
   }, [currentUser]);
 
   const smartMerge = useCallback((remote: AppSnapshot, local: AppSnapshot): AppSnapshot => {
-    const mergeById = <T extends { id: any, updatedAt?: string, createdAt?: string }>(l: T[], r: T[], type?: string): T[] => {
+    const mergeArrays = <T extends { id?: any, name?: string, createdAt?: string, updatedAt?: string }>(l: T[], r: T[]): T[] => {
       const map = new Map<any, T>();
-      l.forEach(i => map.set(i.id, i));
-      
-      r.forEach(i => {
-        const ex = map.get(i.id);
-        if (!ex) {
-          map.set(i.id, i);
-          // Если это новое уведомление или сообщение из облака — кидаем Toast
-          if (type === 'notification' && i.createdAt) {
-             const n = i as unknown as AppNotification;
-             if (n.targetRole === activeRole || activeRole === UserRole.ADMIN) {
-               addToast(n.projectTitle, n.message, 'review');
-             }
-          }
-        } else {
-          const tR = new Date(i.updatedAt || i.createdAt || 0).getTime();
-          const tL = new Date(ex.updatedAt || ex.createdAt || 0).getTime();
-          if (tR > tL) map.set(i.id, i);
+      l.forEach(item => map.set(item.id || item.name || JSON.stringify(item), item));
+      r.forEach(item => {
+        const key = item.id || item.name || JSON.stringify(item);
+        const existing = map.get(key);
+        if (!existing) map.set(key, item);
+        else {
+          const tRemote = new Date(item.updatedAt || item.createdAt || 0).getTime();
+          const tLocal = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+          if (tRemote > tLocal) map.set(key, item);
         }
       });
       return Array.from(map.values()).sort((a, b) => 
@@ -150,33 +154,39 @@ const App: React.FC = () => {
     const mergedProjects = local.projects.map(lp => {
       const rp = remote.projects.find(p => p.id === lp.id);
       if (!rp) return lp;
-      const tR = new Date(rp.updatedAt || 0).getTime();
-      const tL = new Date(lp.updatedAt || 0).getTime();
       return {
-        ...(tR > tL ? rp : lp),
-        comments: mergeById(lp.comments || [], rp.comments || [], 'comment')
+        ...((new Date(rp.updatedAt).getTime() > new Date(lp.updatedAt).getTime()) ? rp : lp),
+        comments: mergeArrays(lp.comments || [], rp.comments || []),
+        fileLinks: mergeArrays(lp.fileLinks || [], rp.fileLinks || [])
       };
     });
+    remote.projects.forEach(rp => { if (!mergedProjects.find(p => p.id === rp.id)) mergedProjects.push(rp); });
 
-    remote.projects.forEach(rp => {
-      if (!mergedProjects.find(p => p.id === rp.id)) mergedProjects.push(rp);
+    const mergedTasks = local.tasks.map(lt => {
+      const rt = remote.tasks.find(t => t.id === lt.id);
+      if (!rt) return lt;
+      return {
+        ...((new Date(rt.updatedAt).getTime() > new Date(lt.updatedAt).getTime()) ? rt : lt),
+        comments: mergeArrays(lt.comments || [], rt.comments || [])
+      };
     });
+    remote.tasks.forEach(rt => { if (!mergedTasks.find(t => t.id === rt.id)) mergedTasks.push(rt); });
 
     return {
-      ...remote, version: APP_VERSION, timestamp: new Date().toISOString(),
+      ...remote, 
+      version: APP_VERSION, 
+      timestamp: new Date().toISOString(),
       projects: mergedProjects,
-      tasks: mergeById(local.tasks, remote.tasks),
-      chatMessages: mergeById(local.chatMessages, remote.chatMessages),
-      notifications: mergeById(local.notifications, remote.notifications, 'notification'),
+      tasks: mergedTasks,
+      notifications: mergeArrays(local.notifications, remote.notifications),
       users: remote.users 
     };
-  }, [activeRole]);
+  }, []);
 
   const handleImportData = useCallback((incoming: AppSnapshot) => {
     setDb(prev => smartMerge(incoming, prev));
   }, [smartMerge]);
 
-  // УСКОРЕННЫЙ ЦИКЛ ОПРОСА (6 секунд) С ОБХОДОМ КЭША
   useEffect(() => {
     const poll = setInterval(async () => {
       if (syncLockRef.current || isSyncing) return;
@@ -184,7 +194,7 @@ const App: React.FC = () => {
       if (!raw) return;
       try {
         const cfg: GithubConfig = JSON.parse(raw);
-        const res = await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${cfg.path}?t=${Date.now()}`, { 
+        const res = await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${cfg.path}?nonce=${Date.now()}`, { 
           headers: { 'Authorization': `Bearer ${cfg.token.trim()}` }, cache: 'no-store' 
         });
         if (res.ok) {
@@ -195,100 +205,19 @@ const App: React.FC = () => {
           setSyncError(false);
         }
       } catch { setSyncError(true); }
-    }, 6000); 
+    }, 10000); 
     return () => clearInterval(poll);
   }, [isSyncing, handleImportData]);
 
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.MASTER_STATE, JSON.stringify(db)); }, [db]);
 
-  const notifyAndLog = (projectId: number, taskTitle: string, message: string, targetRole: UserRole, type: string) => {
-    const now = new Date().toISOString();
-    const project = db.projects.find(p => p.id === projectId);
-    const projectTitle = project?.name || 'Объект';
-
-    const newNotification: AppNotification = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
-      type, projectTitle, taskTitle, message, targetRole, isRead: false, createdAt: now
-    };
-
-    const autoMessage = {
-      id: generateUID('auto-msg'),
-      author: currentUser?.username || 'Система',
-      role: activeRole,
-      text: `📢 ${message}${taskTitle !== 'Система' ? ' (Задача: ' + taskTitle + ')' : ''}`,
-      createdAt: now
-    };
-
-    setDb(prev => {
-      const up = {
-        ...prev, timestamp: now,
-        notifications: [newNotification, ...prev.notifications].slice(0, 100),
-        projects: prev.projects.map(p => p.id === projectId ? {
-          ...p, updatedAt: now, comments: [...(p.comments || []), autoMessage]
-        } : p)
-      };
-      pushToCloud(up);
-      return up;
-    });
-  };
-
-  const updateTaskStatus = (tid: number, st: TaskStatus, file?: File, cmt?: string) => {
-    const now = new Date().toISOString();
-    const task = db.tasks.find(t => t.id === tid);
-    if (!task) return;
-
-    setDb(prev => {
-      const updated: AppSnapshot = {
-        ...prev, timestamp: now,
-        tasks: prev.tasks.map(t => t.id === tid ? { 
-          ...t, status: st, updatedAt: now, supervisorComment: cmt || t.supervisorComment,
-          evidenceUrls: file ? [...(t.evidenceUrls || []), URL.createObjectURL(file)] : t.evidenceUrls,
-          evidenceCount: file ? (t.evidenceCount + 1) : t.evidenceCount
-        } : t)
-      };
-      pushToCloud(updated);
-      return updated;
-    });
-
-    if (st === TaskStatus.REVIEW) {
-      notifyAndLog(task.projectId, task.title, "Сдана работа (+фото)", UserRole.SUPERVISOR, 'review');
-    } else if (st === TaskStatus.REWORK) {
-      notifyAndLog(task.projectId, task.title, `На доработку: ${cmt || 'проверьте'}`, UserRole.FOREMAN, 'rework');
-    } else if (st === TaskStatus.DONE) {
-      notifyAndLog(task.projectId, task.title, "Работа принята", UserRole.MANAGER, 'done');
-    }
-  };
-
-  const handleSendMessage = (text: string, pid?: number) => {
-    const now = new Date().toISOString();
-    const msg = { id: generateUID('m'), author: currentUser?.username || '?', role: activeRole, text, createdAt: now };
-    setDb(prev => {
-      let up: AppSnapshot;
-      if (pid) {
-        up = { ...prev, timestamp: now, projects: prev.projects.map(p => p.id === pid ? { ...p, updatedAt: now, comments: [...(p.comments || []), msg] } : p) };
-      } else {
-        up = { ...prev, timestamp: now, chatMessages: [...prev.chatMessages, { ...msg, userId: currentUser?.id || 0, username: currentUser?.username || '?' }] };
-      }
-      pushToCloud(up);
-      return up;
-    });
-  };
-
-  const handleAddFile = (pid: number, file: File, cat: FileCategory) => {
-    const now = new Date().toISOString();
-    setDb(prev => {
-      const up = { 
-        ...prev, timestamp: now, 
-        projects: prev.projects.map(p => p.id === pid ? { 
-          ...p, updatedAt: now, 
-          fileLinks: [...(p.fileLinks || []), { name: file.name, url: URL.createObjectURL(file), category: cat, createdAt: now }] 
-        } : p) 
-      }; 
-      pushToCloud(up); 
-      return up; 
-    });
-    notifyAndLog(pid, 'Система', `Добавлен файл: ${file.name}`, UserRole.MANAGER, 'file');
-  };
+  const applyInvite = useCallback((code: string) => {
+    try {
+      const i: InvitePayload = JSON.parse(fromBase64(code));
+      localStorage.setItem(STORAGE_KEYS.GH_CONFIG, JSON.stringify({ token: i.token, repo: i.repo, path: i.path }));
+      return true;
+    } catch { return false; }
+  }, []);
 
   const handleUpdateApp = () => {
     if ('serviceWorker' in navigator) {
@@ -299,32 +228,22 @@ const App: React.FC = () => {
     } else window.location.reload();
   };
 
-  if (!currentUser) return <LoginPage users={db.users} onLogin={u => { setCurrentUser(u); setActiveRole(u.role); localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(u)); }} onApplyInvite={c => {
-    try {
-      const i: InvitePayload = JSON.parse(fromBase64(c));
-      localStorage.setItem(STORAGE_KEYS.GH_CONFIG, JSON.stringify({ token: i.token, repo: i.repo, path: i.path }));
-      const u = db.users.find(x => x.role === i.role) || db.users[0];
-      setCurrentUser(u); setActiveRole(u.role); localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(u));
-      window.history.replaceState({}, '', '/'); return true;
-    } catch { return false; }
-  }} />;
+  if (!currentUser) {
+    return (
+      <LoginPage 
+        users={db.users} 
+        onLogin={u => { 
+          setCurrentUser(u); 
+          setActiveRole(u.role); 
+          localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(u)); 
+        }} 
+        onApplyInvite={applyInvite} 
+      />
+    );
+  }
 
   return (
     <div className={`flex flex-col h-full overflow-hidden ${activeRole === UserRole.ADMIN ? 'bg-[#0f172a]' : 'bg-[#f8fafc]'}`}>
-      {/* TOASTS CONTAINER */}
-      <div className="fixed top-20 left-0 right-0 z-[200] flex flex-col items-center gap-2 px-4 pointer-events-none">
-        {toasts.map(t => (
-          <div key={t.id} className="w-full max-w-sm bg-white border-l-4 border-blue-600 rounded-2xl shadow-2xl p-4 flex items-start gap-4 animate-in slide-in-from-top-4 pointer-events-auto">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><Info size={20} /></div>
-            <div className="flex-1 text-left">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-blue-600">{t.title}</h4>
-              <p className="text-xs font-bold text-slate-800 mt-1">{t.msg}</p>
-            </div>
-            <button onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))} className="text-slate-300 hover:text-slate-500"><X size={16} /></button>
-          </div>
-        ))}
-      </div>
-
       <header className={`px-5 py-4 border-b flex items-center justify-between shrink-0 z-40 backdrop-blur-md ${activeRole === UserRole.ADMIN ? 'bg-slate-900/80 border-white/5 text-white' : 'bg-white/80 border-slate-100 text-slate-900 shadow-sm'}`}>
         <button onClick={() => { setActiveTab('dashboard'); setSelectedProjectId(null); setSelectedTaskId(null); }} className="flex items-center gap-3">
           <Logo isMaster={activeRole === UserRole.ADMIN} size={36} />
@@ -355,16 +274,53 @@ const App: React.FC = () => {
         {editingProject ? (
           <ProjectForm project={editingProject} onSave={p => { setDb(prev => ({ ...prev, projects: prev.projects.map(o => o.id === p.id ? p : o) })); setEditingProject(null); }} onCancel={() => setEditingProject(null)} />
         ) : selectedTaskId ? (
-          <TaskDetails task={db.tasks.find(t => t.id === selectedTaskId)!} role={activeRole} isAdmin={activeRole === UserRole.ADMIN} onClose={() => setSelectedTaskId(null)} onStatusChange={updateTaskStatus} onAddComment={(tid, txt) => handleSendMessage(txt)} onAddEvidence={(tid, f) => updateTaskStatus(tid, db.tasks.find(x => x.id === tid)!.status, f)} />
+          <TaskDetails 
+            task={db.tasks.find(t => t.id === selectedTaskId)!} 
+            role={activeRole} 
+            isAdmin={activeRole === UserRole.ADMIN} 
+            onClose={() => setSelectedTaskId(null)} 
+            onStatusChange={(tid, st, file, cmt) => {
+              const now = new Date().toISOString();
+              const newState = {
+                ...db, timestamp: now,
+                tasks: db.tasks.map(t => t.id === tid ? { ...t, status: st, updatedAt: now, supervisorComment: cmt || t.supervisorComment } : t)
+              };
+              setDb(newState); pushToCloud(newState);
+            }} 
+            onAddComment={(tid, txt) => {
+              const now = new Date().toISOString();
+              const newState = { ...db, timestamp: now, tasks: db.tasks.map(t => t.id === tid ? { ...t, updatedAt: now, comments: [...(t.comments || []), { id: generateUID('tc'), author: currentUser.username, role: activeRole, text: txt, createdAt: now }] } : t) };
+              setDb(newState); pushToCloud(newState);
+            }} 
+            onAddEvidence={(tid, f) => {}} 
+          />
         ) : selectedProjectId ? (
-          <ProjectView project={db.projects.find(p => p.id === selectedProjectId)!} tasks={db.tasks.filter(t => t.projectId === selectedProjectId)} currentUser={currentUser} activeRole={activeRole} onBack={() => setSelectedProjectId(null)} onEdit={setEditingProject} onAddTask={() => {}} onSelectTask={setSelectedTaskId} onSendMessage={t => handleSendMessage(t, selectedProjectId)} onAddFile={handleAddFile} />
+          <ProjectView 
+            project={db.projects.find(p => p.id === selectedProjectId)!} 
+            tasks={db.tasks.filter(t => t.projectId === selectedProjectId)} 
+            currentUser={currentUser} 
+            activeRole={activeRole} 
+            onBack={() => setSelectedProjectId(null)} 
+            onEdit={setEditingProject} 
+            onAddTask={() => {}} 
+            onSelectTask={setSelectedTaskId} 
+            onSendMessage={(txt) => {
+               const now = new Date().toISOString();
+               const newState = { ...db, timestamp: now, projects: db.projects.map(p => p.id === selectedProjectId ? { ...p, updatedAt: now, comments: [...(p.comments || []), { id: generateUID('pc'), author: currentUser.username, role: activeRole, text: txt, createdAt: now }] } : p) };
+               setDb(newState); pushToCloud(newState);
+            }} 
+            onAddFile={(pid, file, cat) => {
+              const now = new Date().toISOString();
+              const newState = { ...db, timestamp: now, projects: db.projects.map(p => p.id === pid ? { ...p, updatedAt: now, fileLinks: [{ name: file.name, url: URL.createObjectURL(file), category: cat, createdAt: now }, ...(p.fileLinks || [])] } : p) };
+              setDb(newState); pushToCloud(newState);
+            }} 
+          />
         ) : (
           <div className="space-y-4">
-             {activeTab === 'chat' ? <GlobalChat messages={db.chatMessages} currentUser={currentUser} currentRole={activeRole} onSendMessage={handleSendMessage} /> :
-              activeTab === 'admin' ? <AdminPanel users={db.users} currentUser={currentUser} activeRole={activeRole} onUpdateUsers={u => setDb(prev => ({...prev, users: u}))} onRoleSwitch={setActiveRole} /> :
+             {activeTab === 'admin' ? <AdminPanel users={db.users} currentUser={currentUser} activeRole={activeRole} onUpdateUsers={u => setDb(prev => ({...prev, users: u}))} onRoleSwitch={setActiveRole} /> :
               activeTab === 'sync' ? <BackupManager currentUser={currentUser} currentDb={db} onDataImport={handleImportData} /> :
               activeTab === 'profile' ? (
-                <div className="max-w-md mx-auto space-y-6 animate-in slide-in-from-bottom-4">
+                <div className="max-w-md mx-auto space-y-6 animate-in slide-in-from-bottom-4 text-left">
                   <div className={`p-8 rounded-[2.5rem] border text-center ${activeRole === UserRole.ADMIN ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100 shadow-xl'}`}>
                     <div className="w-20 h-20 rounded-full bg-blue-600/10 text-blue-600 flex items-center justify-center mx-auto mb-6"><UserCircle size={48} /></div>
                     <h2 className={`text-xl font-black mb-1 ${activeRole === UserRole.ADMIN ? 'text-white' : 'text-slate-900'}`}>{currentUser.username}</h2>
@@ -378,18 +334,16 @@ const App: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                  <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.4em]">Zodchiy Enterprise • v{APP_VERSION}</p>
                 </div>
               ) : (
                 <div className="grid gap-3">
-                   <h2 className="text-[9px] font-black uppercase tracking-[0.3em] opacity-30 ml-1 text-left">Объекты управления</h2>
                    {db.projects.map(p => (
                      <div key={p.id} onClick={() => setSelectedProjectId(p.id)} className={`p-5 rounded-3xl border shadow-sm active:scale-95 transition-all cursor-pointer flex items-center justify-between ${activeRole === UserRole.ADMIN ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100'}`}>
                        <div className="flex items-center gap-4">
                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${activeRole === UserRole.ADMIN ? 'bg-white/5 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>{p.name[0]}</div>
                          <div className="text-left">
                            <h3 className={`font-black tracking-tight leading-none mb-1 ${activeRole === UserRole.ADMIN ? 'text-white' : 'text-slate-800'}`}>{p.name}</h3>
-                           <p className="text-[8px] font-bold uppercase opacity-30">{p.address}</p>
+                           <p className="text-[8px] font-bold uppercase opacity-30 truncate max-w-[200px]">{p.address}</p>
                          </div>
                        </div>
                        <LayoutGrid size={14} className="opacity-10" />
@@ -405,20 +359,17 @@ const App: React.FC = () => {
         <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'dashboard' ? 'text-blue-500 scale-110' : 'opacity-40 hover:opacity-100'}`}>
           <LayoutGrid size={24} /><span className="text-[7px] font-black uppercase">Объекты</span>
         </button>
-        <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'chat' ? 'text-blue-500 scale-110' : 'opacity-40 hover:opacity-100'}`}>
-          <MessageSquare size={24} /><span className="text-[7px] font-black uppercase">Чат</span>
-        </button>
         {activeRole === UserRole.ADMIN && (
           <button onClick={() => setActiveTab('admin')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'admin' ? 'text-blue-500 scale-110' : 'opacity-40 hover:opacity-100'}`}>
-            <CheckSquare size={24} /><span className="text-[7px] font-black uppercase">Админ</span>
+            <CheckSquare size={24} /><span className="text-[7px] font-black uppercase">Персонал</span>
           </button>
         )}
         <button onClick={() => setActiveTab('sync')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'sync' ? 'text-blue-500 scale-110' : 'opacity-40 hover:opacity-100'}`}>
           <div className="relative"><RefreshCw size={24} className={isSyncing ? "animate-spin" : ""} /><Cloud size={10} className="absolute -top-1 -right-1" /></div>
-          <span className="text-[7px] font-black uppercase">Синхро</span>
+          <span className="text-[7px] font-black uppercase">Облако</span>
         </button>
         <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'profile' ? 'text-blue-500 scale-110' : 'opacity-40 hover:opacity-100'}`}>
-          <UserCircle size={24} /><span className="text-[7px] font-black uppercase">Профиль</span>
+          <UserCircle size={24} /><span className="text-[7px] font-black uppercase">Аккаунт</span>
         </button>
       </nav>
       <AIAssistant projectContext={db.projects[0]?.name || ""} />
