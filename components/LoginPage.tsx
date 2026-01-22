@@ -1,22 +1,21 @@
+
 import React, { useState, useEffect } from 'react';
-import { Shield, Activity, Users, Eye, Building2, ChevronRight, Lock, User as UserIcon, CheckCircle2, AlertTriangle, ArrowLeft, Settings, Database, Github, Save, CloudOff } from 'lucide-react';
+import { Shield, Activity, Users, Eye, Building2, ChevronRight, Lock, User as UserIcon, CheckCircle2, AlertTriangle, ArrowLeft, Settings, Database, Github, Save, CloudOff, RefreshCw } from 'lucide-react';
 import { User, UserRole, ROLE_LABELS, APP_VERSION } from '../types.ts';
 
 interface LoginPageProps {
   users: User[];
   onLogin: (user: User) => void;
   onApplyInvite: (code: string) => boolean;
+  onReset: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onApplyInvite }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onApplyInvite, onReset }) => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
   
-  // Упрощаем: по умолчанию разрешаем вход, даже если GitHub не настроен
-  const [isConfigured, setIsConfigured] = useState(true);
   const [hasRealCloud, setHasRealCloud] = useState(() => !!localStorage.getItem('zodchiy_cloud_config_stable_v1'));
-  
   const [showManualSetup, setShowManualSetup] = useState(false);
   const [setupData, setSetupData] = useState({ token: '', repo: '', path: 'db.json' });
 
@@ -72,16 +71,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onApplyInv
     }
   };
 
-  // ЭКРАН ВЫБОРА ПРОФИЛЯ
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center p-4 sm:p-6">
+      {/* Settings Button */}
       {!hasRealCloud && !selectedUser && !showManualSetup && (
         <button 
           onClick={() => setShowManualSetup(true)}
           className="fixed top-6 right-6 p-3 bg-white border border-slate-100 rounded-2xl shadow-sm text-slate-400 flex items-center gap-2 hover:text-blue-600 transition-all z-50 group"
         >
           <Settings size={18} className="group-hover:rotate-90 transition-transform" />
-          <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">Настройка облака</span>
+          <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">Настройка</span>
         </button>
       )}
 
@@ -103,7 +102,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onApplyInv
                 value={setupData.token}
                 onChange={e => setSetupData({...setupData, token: e.target.value})}
                 placeholder="ghp_..."
-                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all"
+                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-blue-50 transition-all"
               />
             </div>
             <div className="space-y-1">
@@ -113,7 +112,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onApplyInv
                 value={setupData.repo}
                 onChange={e => setSetupData({...setupData, repo: e.target.value})}
                 placeholder="my-name/my-construction-db"
-                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 transition-all"
+                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 text-sm font-bold text-slate-900 outline-none focus:ring-4 focus:ring-blue-50 transition-all"
               />
             </div>
             
@@ -152,24 +151,42 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onApplyInv
 
           {!selectedUser ? (
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="grid grid-cols-1 gap-3">
-                {users.map((user) => (
-                  <button 
-                    key={user.id}
-                    onClick={() => setSelectedUser(user)}
-                    className="group flex items-center gap-4 p-4 bg-white rounded-[1.8rem] border border-slate-100 hover:border-blue-500 hover:shadow-lg transition-all active:scale-[0.98] text-left shadow-sm"
-                  >
-                    <div className={`w-12 h-12 rounded-2xl ${getRoleTheme(user.role)} flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 shrink-0`}>
-                      {getRoleIcon(user.role)}
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-sm font-black text-slate-800 leading-none mb-1.5 uppercase tracking-tight">{user.username}</h3>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{ROLE_LABELS[user.role]}</p>
-                    </div>
-                    <ChevronRight className="text-slate-200 group-hover:text-blue-500" size={20} />
-                  </button>
-                ))}
-              </div>
+              {users.length === 0 ? (
+                <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 text-center space-y-6 shadow-xl">
+                   <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto">
+                     <AlertTriangle size={32} />
+                   </div>
+                   <div className="space-y-2">
+                     <h3 className="text-lg font-black uppercase tracking-tight text-slate-800">Ошибка базы</h3>
+                     <p className="text-xs text-slate-500 font-medium">Список пользователей пуст. Это может произойти при очистке кэша браузера или сбое сессии.</p>
+                   </div>
+                   <button 
+                    onClick={onReset}
+                    className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all"
+                   >
+                     <RefreshCw size={18} /> Восстановить систему
+                   </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {users.map((user) => (
+                    <button 
+                      key={user.id}
+                      onClick={() => setSelectedUser(user)}
+                      className="group flex items-center gap-4 p-4 bg-white rounded-[1.8rem] border border-slate-100 hover:border-blue-500 hover:shadow-lg transition-all active:scale-[0.98] text-left shadow-sm"
+                    >
+                      <div className={`w-12 h-12 rounded-2xl ${getRoleTheme(user.role)} flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 shrink-0`}>
+                        {getRoleIcon(user.role)}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-sm font-black text-slate-800 leading-none mb-1.5 uppercase tracking-tight">{user.username}</h3>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{ROLE_LABELS[user.role]}</p>
+                      </div>
+                      <ChevronRight className="text-slate-200 group-hover:text-blue-500" size={20} />
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-300 text-center relative">
@@ -198,7 +215,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onApplyInv
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Введите пароль"
-                    className={`w-full bg-slate-50 border ${error ? 'border-rose-500 bg-rose-50' : 'border-slate-100'} rounded-2xl px-14 py-5 text-center text-lg font-black tracking-[0.5em] outline-none transition-all focus:border-blue-500 focus:bg-white`}
+                    className={`w-full bg-slate-50 border ${error ? 'border-rose-500 bg-rose-50' : 'border-slate-100'} rounded-2xl px-14 py-5 text-center text-lg font-black tracking-[0.5em] text-slate-900 outline-none transition-all focus:border-blue-500 focus:bg-white`}
                   />
                 </div>
                 
