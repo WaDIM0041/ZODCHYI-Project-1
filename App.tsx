@@ -306,10 +306,16 @@ const App: React.FC = () => {
             <Building2 size={24} />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-lg font-black tracking-tighter text-slate-900 leading-none">ЗОДЧИЙ</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-black tracking-tighter text-slate-900 leading-none">ЗОДЧИЙ</h1>
+              <div className="h-4 w-px bg-slate-200"></div>
+              <span className="text-[11px] font-black text-slate-800 tracking-tight leading-none uppercase truncate max-w-[120px]">
+                {currentUser.username}
+              </span>
+            </div>
             <div className="flex items-center gap-1.5 mt-1">
               <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest leading-none">
-                v{APP_VERSION}
+                {ROLE_LABELS[activeRole]}
               </p>
               <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-blue-500 animate-pulse' : syncError ? 'bg-rose-500' : 'bg-emerald-500'}`}></div>
             </div>
