@@ -215,7 +215,7 @@ const App: React.FC = () => {
         console.error("SW Update failed", e);
       }
     }
-    // Полная очистка кеша и перезагрузка
+    // Fixed: window.location.reload() expects 0 arguments.
     window.location.reload();
   };
 
@@ -304,23 +304,22 @@ const App: React.FC = () => {
           <div className="w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-100 group-hover:rotate-3 transition-transform">
             <Building2 size={26} />
           </div>
-          <div className="flex flex-col">
+          <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-3">
-              <h1 className="text-xl font-black tracking-tighter text-slate-900 leading-none">ЗОДЧИЙ</h1>
-              <div className="h-4 w-0.5 bg-blue-600/20 rounded-full"></div>
-              <div className="flex flex-col">
-                <span className="text-[11px] font-black text-slate-800 leading-none uppercase tracking-tight truncate max-w-[120px]">
-                  {currentUser.username}
-                </span>
-                <span className="text-[8px] font-bold text-blue-600 leading-none uppercase tracking-widest mt-0.5">
-                  {ROLE_LABELS[activeRole]}
-                </span>
-              </div>
+              <h1 className="text-xl font-black tracking-tighter text-slate-900 leading-none shrink-0">ЗОДЧИЙ</h1>
+              <div className="h-4 w-1 bg-blue-600/30 rounded-full shrink-0"></div>
+              <span className="text-sm font-black text-slate-800 leading-none uppercase tracking-tight truncate max-w-[140px] pt-0.5">
+                {currentUser.username}
+              </span>
             </div>
-            <div className="flex items-center gap-2 mt-1.5">
-              <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-blue-500 animate-pulse' : syncError ? 'bg-rose-500' : 'bg-emerald-500'}`}></div>
-              <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.3em] leading-none">
-                Core v{APP_VERSION}
+            <div className="flex items-center gap-2 mt-1.5 overflow-hidden">
+              <span className="text-[8px] font-black text-blue-600 leading-none uppercase tracking-widest shrink-0">
+                {ROLE_LABELS[activeRole]}
+              </span>
+              <div className="w-1 h-1 rounded-full bg-slate-300 shrink-0"></div>
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSyncing ? 'bg-blue-500 animate-pulse' : syncError ? 'bg-rose-500' : 'bg-emerald-500'}`}></div>
+              <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none whitespace-nowrap">
+                v{APP_VERSION}
               </p>
             </div>
           </div>
@@ -486,7 +485,7 @@ const App: React.FC = () => {
 
               <div className="mt-4 p-3 bg-blue-500/10 rounded-xl border border-blue-500/20">
                 <p className="text-[9px] font-bold text-blue-300 leading-tight">
-                  Статус системы: Стабильно. Обновите приложение при обнаружении ошибок или для получения новых функций.
+                  Статус системы: v{APP_VERSION} Стабильно. Обновите приложение при обнаружении ошибок.
                 </p>
               </div>
             </div>

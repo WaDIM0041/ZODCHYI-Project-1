@@ -1,8 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIAnalysisResult } from "../types.ts";
 
-// Инициализация строго по гайдлайнам SDK
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+// Always initialize with the required named parameter and use process.env.API_KEY directly.
+const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const analyzeConstructionTask = async (
   taskTitle: string,
@@ -23,19 +23,17 @@ export const analyzeConstructionTask = async (
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            ...imagesBase64.map(data => ({
-              inlineData: {
-                mimeType: 'image/jpeg',
-                data: data.includes(',') ? data.split(',')[1] : data
-              }
-            }))
-          ]
-        }
-      ],
+      contents: {
+        parts: [
+          { text: prompt },
+          ...imagesBase64.map(data => ({
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: data.includes(',') ? data.split(',')[1] : data
+            }
+          }))
+        ]
+      },
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -50,6 +48,7 @@ export const analyzeConstructionTask = async (
       }
     });
 
+    // Access the text property directly on the GenerateContentResponse object.
     const result = JSON.parse(response.text || '{}');
     return {
       ...result,
@@ -77,6 +76,7 @@ export const getAITechnicalAdvice = async (query: string, context: string): Prom
         Вопрос: ${query}
       `,
     });
+    // Access the text property directly on the GenerateContentResponse object.
     return response.text || "Нет ответа от системы.";
   } catch (error) {
     return "Ошибка ИИ: " + (error instanceof Error ? error.message : "неизвестная ошибка");
