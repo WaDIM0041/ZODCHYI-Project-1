@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   UserRole, Task, TaskStatus, Project, User, ProjectStatus, 
   ROLE_LABELS, Comment, APP_VERSION, AppNotification, GlobalChatMessage, AppSnapshot, FileCategory, GithubConfig, InvitePayload 
@@ -81,6 +81,7 @@ const App: React.FC = () => {
   const [activeRole, setActiveRole] = useState<UserRole>(currentUser?.role || UserRole.ADMIN);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState(false);
+  const syncLockRef = useRef(false);
   
   const [db, setDb] = useState<AppSnapshot>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.MASTER_STATE);
@@ -127,14 +128,11 @@ const App: React.FC = () => {
         };
         localStorage.setItem(STORAGE_KEYS.GH_CONFIG, JSON.stringify(newGhConfig));
         
-        // Находим пользователя по роли из инвайта
         const targetUser = db.users.find(u => u.role === invite.role) || db.users[0];
-        
         setCurrentUser(targetUser);
         setActiveRole(targetUser.role);
         localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(targetUser));
         
-        // Очищаем URL от параметров после успешного входа
         window.history.replaceState({}, document.title, window.location.pathname);
         return true;
       }
@@ -145,30 +143,26 @@ const App: React.FC = () => {
     }
   }, [db.users]);
 
-  // Эффект для обработки ссылки-приглашения при загрузке
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get('invite');
     if (inviteCode) {
-      setTimeout(() => {
-        handleApplyInvite(inviteCode);
-      }, 500); // Небольшая задержка для плавности
+      handleApplyInvite(inviteCode);
     }
   }, [handleApplyInvite]);
 
   const dbSize = useMemo(() => {
     const str = JSON.stringify(db);
-    const bytes = new Blob([str]).size;
-    return (bytes / 1024).toFixed(2);
+    return (new Blob([str]).size / 1024).toFixed(2);
   }, [db]);
 
   const smartMerge = useCallback((remote: AppSnapshot, local: AppSnapshot): AppSnapshot => {
-    const mergeArrays = <T extends { id: any }>(arr1: T[], arr2: T[]): T[] => {
+    const mergeArrays = <T extends { id: any, updatedAt?: string }>(arr1: T[], arr2: T[]): T[] => {
       const map = new Map<any, T>();
       arr1.forEach(item => map.set(item.id, item));
       arr2.forEach(item => {
         const existing = map.get(item.id);
-        if (!existing || (item as any).updatedAt > (existing as any).updatedAt) {
+        if (!existing || (item.updatedAt || '') > (existing.updatedAt || '')) {
           map.set(item.id, item);
         }
       });
@@ -193,11 +187,15 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const pollInterval = setInterval(async () => {
+      if (syncLockRef.current) return;
       const rawConfig = localStorage.getItem(STORAGE_KEYS.GH_CONFIG);
       if (!rawConfig) return;
+      
       try {
+        syncLockRef.current = true;
         const config: GithubConfig = JSON.parse(rawConfig);
         if (!config.token || !config.repo) return;
+        
         setIsSyncing(true);
         const url = `https://api.github.com/repos/${config.repo}/contents/${config.path}`;
         const response = await fetch(url, { 
@@ -207,6 +205,7 @@ const App: React.FC = () => {
           },
           cache: 'no-store' 
         });
+        
         if (response.ok) {
           const data = await response.json();
           const remoteDb = JSON.parse(fromBase64(data.content)) as AppSnapshot;
@@ -220,7 +219,8 @@ const App: React.FC = () => {
       } catch (err) {
         setSyncError(true);
       } finally {
-        setTimeout(() => setIsSyncing(false), 1500);
+        setIsSyncing(false);
+        syncLockRef.current = false;
       }
     }, 45000); 
     return () => clearInterval(pollInterval);
@@ -253,10 +253,8 @@ const App: React.FC = () => {
     try {
       if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
         const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map(async (registration) => {
-          try {
-            await registration.update();
-          } catch (e) {}
+        await Promise.all(registrations.map(async (reg) => {
+          try { await reg.update(); } catch (e) {}
         }));
       }
     } catch (e) {
@@ -268,44 +266,30 @@ const App: React.FC = () => {
     }
   };
 
-  const addTask = (projectId: number) => {
-    const newTask: Task = {
-      id: Date.now(), 
-      projectId,
-      title: 'Новая задача',
-      description: 'Введите описание...',
-      status: TaskStatus.TODO,
-      evidenceUrls: [],
-      evidenceCount: 0,
-      comments: [],
-      updatedAt: new Date().toISOString()
-    };
-    setDb(prev => ({ 
-      ...prev, 
-      tasks: [...prev.tasks, newTask], 
-      timestamp: new Date().toISOString() 
-    }));
-    setSelectedTaskId(newTask.id);
-  };
-
   const updateTaskStatus = (taskId: number, newStatus: TaskStatus, evidenceFile?: File, comment?: string) => {
-    setDb(prev => ({
-      ...prev,
-      timestamp: new Date().toISOString(),
-      tasks: prev.tasks.map(t => {
-        if (t.id === taskId) {
-          const updated = { ...t, status: newStatus, updatedAt: new Date().toISOString() };
-          if (comment) updated.supervisorComment = comment;
-          if (evidenceFile) {
-            const fakeUrl = URL.createObjectURL(evidenceFile);
-            updated.evidenceUrls = [...updated.evidenceUrls, fakeUrl];
-            updated.evidenceCount = updated.evidenceUrls.length;
+    setDb(prev => {
+      let evidenceUrl = '';
+      if (evidenceFile) {
+        evidenceUrl = URL.createObjectURL(evidenceFile);
+      }
+
+      return {
+        ...prev,
+        timestamp: new Date().toISOString(),
+        tasks: prev.tasks.map(t => {
+          if (t.id === taskId) {
+            const updated = { ...t, status: newStatus, updatedAt: new Date().toISOString() };
+            if (comment) updated.supervisorComment = comment;
+            if (evidenceUrl) {
+              updated.evidenceUrls = [...updated.evidenceUrls, evidenceUrl];
+              updated.evidenceCount = updated.evidenceUrls.length;
+            }
+            return updated;
           }
-          return updated;
-        }
-        return t;
-      })
-    }));
+          return t;
+        })
+      };
+    });
   };
 
   const updateProject = (updatedProject: Project) => {
@@ -318,7 +302,7 @@ const App: React.FC = () => {
   };
 
   const handleAddFile = (projectId: number, file: File, category: FileCategory) => {
-    const fakeUrl = URL.createObjectURL(file);
+    const fileUrl = URL.createObjectURL(file);
     setDb(prev => ({
       ...prev,
       timestamp: new Date().toISOString(),
@@ -326,7 +310,7 @@ const App: React.FC = () => {
         if (p.id === projectId) {
           const newFile = {
             name: file.name,
-            url: fakeUrl,
+            url: fileUrl,
             category,
             createdAt: new Date().toISOString()
           };
@@ -394,11 +378,7 @@ const App: React.FC = () => {
 
       <main className={`flex-1 overflow-y-auto p-4 sm:p-6 pb-32 text-left scrollbar-hide ${isMasterMode ? 'bg-[#0f172a]' : 'bg-[#f8fafc]'}`}>
         {editingProject ? (
-          <ProjectForm 
-            project={editingProject} 
-            onSave={updateProject} 
-            onCancel={() => setEditingProject(null)} 
-          />
+          <ProjectForm project={editingProject} onSave={updateProject} onCancel={() => setEditingProject(null)} />
         ) : selectedTaskId ? (
           <TaskDetails 
             task={selectedTask!} 
@@ -430,7 +410,7 @@ const App: React.FC = () => {
             activeRole={activeRole}
             onBack={() => setSelectedProjectId(null)}
             onEdit={setEditingProject}
-            onAddTask={() => addTask(selectedProjectId)}
+            onAddTask={() => {}}
             onSelectTask={setSelectedTaskId}
             onSendMessage={(txt) => setDb(prev => ({ 
               ...prev, 
@@ -485,13 +465,7 @@ const App: React.FC = () => {
             }))} 
           />
         ) : activeTab === 'admin' ? (
-          <AdminPanel 
-            users={db.users} 
-            currentUser={currentUser} 
-            activeRole={activeRole} 
-            onUpdateUsers={(u) => setDb(prev => ({ ...prev, timestamp: new Date().toISOString(), users: u }))} 
-            onRoleSwitch={setActiveRole} 
-          />
+          <AdminPanel users={db.users} currentUser={currentUser} activeRole={activeRole} onUpdateUsers={(u) => setDb(prev => ({ ...prev, timestamp: new Date().toISOString(), users: u }))} onRoleSwitch={setActiveRole} />
         ) : activeTab === 'sync' ? (
           <BackupManager currentUser={currentUser} currentDb={db} onDataImport={handleImportData} />
         ) : (
@@ -502,32 +476,27 @@ const App: React.FC = () => {
               </div>
               <h2 className={`text-xl font-black mb-1 uppercase tracking-tighter ${isMasterMode ? 'text-white' : 'text-slate-800'}`}>{currentUser.username}</h2>
               <p className={`text-[10px] font-black uppercase tracking-[0.2em] mb-8 ${isMasterMode ? 'text-yellow-500' : 'text-blue-600'}`}>{ROLE_LABELS[activeRole]}</p>
-              <button onClick={handleLogout} className={`w-full py-4 font-black rounded-2xl border flex items-center justify-center gap-2 uppercase tracking-widest text-[10px] transition-all ${isMasterMode ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500 hover:text-white' : 'bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-600 hover:text-white'}`}>
-                <LogOut size={18} /> Выйти из системы
+              <button onClick={handleLogout} className="w-full py-4 font-black rounded-2xl border flex items-center justify-center gap-2 uppercase tracking-widest text-[10px] transition-all bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-600 hover:text-white">
+                <LogOut size={18} /> Выйти
               </button>
             </div>
-
-            <div className={`p-6 rounded-[2.5rem] border shadow-xl text-left ${isMasterMode ? 'bg-slate-800 border-white/10' : 'bg-slate-900 border-white/10'}`}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className={`p-2 rounded-lg ${isMasterMode ? 'bg-yellow-500/20 text-yellow-500' : 'bg-blue-500/20 text-blue-400'}`}><HardDrive size={18} /></div>
-                <h4 className="text-[11px] font-black text-white uppercase tracking-widest">Системные ресурсы</h4>
+            <div className="p-6 rounded-[2.5rem] border shadow-xl bg-slate-900 border-white/10 text-left">
+              <div className="flex items-center gap-3 mb-4 text-white">
+                <HardDrive size={18} />
+                <h4 className="text-[11px] font-black uppercase tracking-widest">Система</h4>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Размер базы</p>
-                  <p className={`text-lg font-black leading-none ${isMasterMode ? 'text-yellow-400' : 'text-blue-400'}`}>{dbSize} КБ</p>
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">База данных</p>
+                  <p className="text-lg font-black text-yellow-400">{dbSize} КБ</p>
                 </div>
                 <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Ядро системы</p>
-                  <p className={`text-lg font-black leading-none ${isMasterMode ? 'text-emerald-400' : 'text-emerald-400'}`}>{APP_VERSION}</p>
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Ядро</p>
+                  <p className="text-lg font-black text-emerald-400">{APP_VERSION}</p>
                 </div>
               </div>
-              
-              <button 
-                onClick={handleAppUpdate}
-                className={`w-full mt-6 py-4 rounded-2xl flex items-center justify-center gap-3 font-black text-[10px] uppercase tracking-widest shadow-lg active:scale-95 transition-all ${isMasterMode ? 'bg-yellow-500 text-slate-900 shadow-yellow-500/20' : 'bg-blue-600 text-white shadow-blue-500/20'}`}
-              >
-                <DownloadCloud size={18} /> Обновить ядро APP
+              <button onClick={handleAppUpdate} className="w-full mt-6 py-4 bg-yellow-500 text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg transition-all flex items-center justify-center gap-3">
+                <DownloadCloud size={18} /> Обновить приложение
               </button>
             </div>
           </div>

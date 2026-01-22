@@ -1,37 +1,56 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIAnalysisResult } from "../types.ts";
 
-// Always initialize with the required named parameter and use process.env.API_KEY directly.
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+// Вспомогательная функция для конвертации blob url в base64
+async function urlToBase64(url: string): Promise<string> {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      resolve(base64String.split(',')[1]); // Возвращаем только чистый base64
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 export const analyzeConstructionTask = async (
   taskTitle: string,
   taskDescription: string,
-  imagesBase64: string[]
+  imageUrls: string[]
 ): Promise<AIAnalysisResult> => {
   const ai = getAI();
   
   const prompt = `
-    Как профессиональный инженер технадзора, проанализируй качество работ по фото:
+    Как профессиональный инженер технадзора, проанализируй качество работ по предоставленным фото:
     Задача: ${taskTitle}
     Описание: ${taskDescription}
     
-    Выяви нарушения СНиП и ГОСТ. Оцени результат.
-    Верни строго JSON.
+    Выяви возможные нарушения СНиП и ГОСТ. Оцени результат (passed/warning/failed).
+    Верни ответ строго в формате JSON.
   `;
 
   try {
+    // Конвертируем все локальные ссылки в base64 для API
+    const imageParts = await Promise.all(
+      imageUrls.map(async (url) => ({
+        inlineData: {
+          mimeType: 'image/jpeg',
+          data: await urlToBase64(url)
+        }
+      }))
+    );
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           { text: prompt },
-          ...imagesBase64.map(data => ({
-            inlineData: {
-              mimeType: 'image/jpeg',
-              data: data.includes(',') ? data.split(',')[1] : data
-            }
-          }))
+          ...imageParts
         ]
       },
       config: {
@@ -48,7 +67,6 @@ export const analyzeConstructionTask = async (
       }
     });
 
-    // Access the text property directly on the GenerateContentResponse object.
     const result = JSON.parse(response.text || '{}');
     return {
       ...result,
@@ -58,8 +76,8 @@ export const analyzeConstructionTask = async (
     console.error("AI Analysis error:", error);
     return {
       status: 'warning',
-      feedback: 'Автоматический анализ временно недоступен. Требуется ручная проверка.',
-      detectedIssues: ['Ошибка связи с нейросетью'],
+      feedback: 'Автоматический анализ временно недоступен из-за ошибки обработки изображений. Требуется ручная проверка.',
+      detectedIssues: ['Ошибка обработки медиа-данных'],
       timestamp: new Date().toISOString()
     };
   }
@@ -71,14 +89,14 @@ export const getAITechnicalAdvice = async (query: string, context: string): Prom
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `
-        Ты — ЗОДЧИЙ AI. Специализация: технадзор, СНиП.
-        Контекст объекта: ${context}
-        Вопрос: ${query}
+        Ты — ЗОДЧИЙ AI. Твоя специализация: строительный технадзор и нормы СНиП/ГОСТ.
+        Контекст текущего объекта: ${context}
+        Вопрос пользователя: ${query}
+        Давай краткие, профессиональные и точные ответы.
       `,
     });
-    // Access the text property directly on the GenerateContentResponse object.
-    return response.text || "Нет ответа от системы.";
+    return response.text || "Система не смогла сформировать ответ.";
   } catch (error) {
-    return "Ошибка ИИ: " + (error instanceof Error ? error.message : "неизвестная ошибка");
+    return "Ошибка ИИ: " + (error instanceof Error ? error.message : "сервис временно недоступен");
   }
 };
