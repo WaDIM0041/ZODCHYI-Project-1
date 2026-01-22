@@ -1,6 +1,5 @@
-
-export const APP_VERSION = '1.2.1';
-export const STANDARD_NAME = 'Zodchiy Standard baseline';
+export const APP_VERSION = '1.2.3';
+export const STANDARD_NAME = 'Zodchiy Enterprise Core';
 
 export enum UserRole {
   ADMIN = 'admin',
@@ -82,7 +81,7 @@ export interface Project {
   progress: number;
   status: ProjectStatus;
   comments?: Comment[];
-  updatedAt?: string;
+  updatedAt: string;
 }
 
 export interface AIAnalysisResult {
@@ -104,7 +103,7 @@ export interface Task {
   evidenceCount: number;
   comments?: Comment[];
   aiAnalysis?: AIAnalysisResult;
-  updatedAt?: string;
+  updatedAt: string;
 }
 
 export interface GithubConfig {
@@ -119,7 +118,10 @@ export interface AppSnapshot {
   projects: Project[];
   tasks: Task[];
   users: User[];
-  config: GithubConfig;
+  notifications: AppNotification[];
+  chatMessages: GlobalChatMessage[];
+  config?: GithubConfig;
+  buildNumber?: number;
 }
 
 export interface AppNotification {

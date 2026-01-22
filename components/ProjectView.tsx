@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Project, User, UserRole, ROLE_LABELS, FileCategory, ProjectFile } from '../types.ts';
 import { 
@@ -93,8 +92,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             <Building2 size={28} />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-black text-slate-900 truncate leading-tight tracking-tighter uppercase">{project.name}</h2>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1.5 truncate">{project.address}</p>
+            <h2 className="text-lg sm:text-xl font-black text-slate-900 break-words leading-tight tracking-tighter uppercase">{project.name}</h2>
+            <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1.5 break-words">{project.address}</p>
           </div>
         </div>
 
