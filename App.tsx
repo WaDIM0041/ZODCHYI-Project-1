@@ -142,6 +142,16 @@ const App: React.FC = () => {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
 
+  // СБРОС НА ГЛАВНУЮ
+  const handleGoHome = () => {
+    setActiveTab('dashboard');
+    setSelectedProjectId(null);
+    setSelectedTaskId(null);
+    setIsAddingProject(false);
+    setEditingProject(null);
+    setShowNotifications(false);
+  };
+
   // СИНХРОНИЗАЦИЯ
   const pushToCloud = useCallback(async (snapshot: AppSnapshot) => {
     const raw = localStorage.getItem(STORAGE_KEYS.GH_CONFIG);
@@ -312,12 +322,29 @@ const App: React.FC = () => {
   const selectedProject = db.projects.find(p => p.id === selectedProjectId);
   const selectedTask = db.tasks.find(t => t.id === selectedTaskId);
 
+  if (!currentUser) {
+    return (
+      <LoginPage 
+        users={db.users} 
+        onLogin={(user) => {
+          setCurrentUser(user);
+          setActiveRole(user.role);
+          localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(user));
+        }}
+        onApplyInvite={() => false}
+      />
+    );
+  }
+
   return (
     <div className={`flex flex-col h-full overflow-hidden ${activeRole === UserRole.ADMIN ? 'bg-[#0f172a]' : 'bg-[#f8fafc]'}`}>
       {/* HEADER */}
       <header className={`px-5 py-4 border-b flex items-center justify-between sticky top-0 z-50 backdrop-blur-md ${activeRole === UserRole.ADMIN ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-100'}`}>
-        <div className="flex items-center gap-3">
-          <Logo size={32} isMaster={activeRole === UserRole.ADMIN} />
+        <button 
+          onClick={handleGoHome}
+          className="flex items-center gap-3 active:scale-95 transition-all text-left group"
+        >
+          <Logo size={32} isMaster={activeRole === UserRole.ADMIN} className="group-hover:rotate-12 transition-transform" />
           <div>
             <h1 className={`text-xs font-black uppercase tracking-widest leading-none ${activeRole === UserRole.ADMIN ? 'text-white' : 'text-slate-900'}`}>Зодчий</h1>
             <div className="flex items-center gap-1.5 mt-1">
@@ -326,7 +353,7 @@ const App: React.FC = () => {
               </span>
             </div>
           </div>
-        </div>
+        </button>
 
         <div className="flex items-center gap-2">
           <div className="flex gap-1.5 mr-2">
@@ -418,6 +445,12 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   ))}
+                  {db.projects.length === 0 && (
+                    <div className="col-span-full py-20 text-center flex flex-col items-center gap-4 text-slate-400">
+                      <Building2 size={48} className="opacity-20" />
+                      <p className="text-[10px] font-black uppercase tracking-widest">Список объектов пуст</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
