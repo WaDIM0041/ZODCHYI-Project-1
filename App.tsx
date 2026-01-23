@@ -99,11 +99,8 @@ const cloud = {
         cloudDb = JSON.parse(decoded);
       }
 
-      // Функция безопасного слияния: берем всё из обоих источников, 
-      // при конфликте ID оставляем тот, у которого новее дата изменения
       const merge = (l: any[] = [], c: any[] = []) => {
         const map = new Map();
-        // Сначала облако, потом локал (локал может быть новее)
         [...(c || []), ...(l || [])].forEach(item => {
           if (!item?.id) return;
           const ex = map.get(item.id);
@@ -127,7 +124,6 @@ const cloud = {
         timestamp: new Date().toISOString()
       };
 
-      // Сохраняем объединенную версию обратно в облако
       const content = encodeUnicode(JSON.stringify(final));
       await fetch(url, {
         method: 'PUT',
@@ -176,22 +172,61 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // 1. Загрузка данных при старте
   useEffect(() => {
     const init = async () => {
-      // Пытаемся достать локальную базу
       const saved = await idb.get('state');
       let currentDb: AppSnapshot;
       
-      if (saved && saved.projects) {
+      if (saved && saved.projects && saved.projects.length > 0) {
         currentDb = saved;
       } else {
-        // Дефолтная база, если совсем ничего нет
+        const demoProjectId = 1735689600000;
         currentDb = {
           version: APP_VERSION,
           timestamp: new Date().toISOString(),
-          projects: [],
-          tasks: [],
+          projects: [
+            {
+              id: demoProjectId,
+              name: "ЖК «Сириус» • Корпус 2",
+              description: "Строительство жилого комплекса комфорт-класса. Текущий этап: внутренние отделочные работы.",
+              clientFullName: "ООО СпецЗастройщик",
+              city: "Санкт-Петербург",
+              street: "ул. Новая, д. 12",
+              phone: "+7 (999) 123-44-55",
+              telegram: "@sirius_build",
+              address: "г. Санкт-Петербург, ул. Новая, д. 12",
+              geoLocation: { lat: 59.9342, lon: 30.3351 },
+              fileLinks: [],
+              progress: 35,
+              status: ProjectStatus.IN_PROGRESS,
+              updatedAt: new Date().toISOString()
+            }
+          ],
+          tasks: [
+            {
+              id: 1001,
+              projectId: demoProjectId,
+              title: "Возведение внутренних перегородок",
+              description: "Кладка пазогребневых плит (ПГП) в секции А. Соблюдение проектных отметок дверных проемов.",
+              status: TaskStatus.IN_PROGRESS,
+              evidenceUrls: [],
+              evidenceCount: 0,
+              comments: [
+                { id: 1, author: "Администратор", role: UserRole.ADMIN, text: "Обратите внимание на армирование углов.", createdAt: new Date().toISOString() }
+              ],
+              updatedAt: new Date().toISOString()
+            },
+            {
+              id: 1002,
+              projectId: demoProjectId,
+              title: "Фундаментные работы",
+              description: "Заливка плиты основания, гидроизоляция.",
+              status: TaskStatus.DONE,
+              evidenceUrls: [],
+              evidenceCount: 0,
+              updatedAt: new Date().toISOString()
+            }
+          ],
           notifications: [],
           chatMessages: [],
           users: [{ id: 1, username: 'Администратор', role: UserRole.ADMIN, password: '123' }]
@@ -201,15 +236,12 @@ const App: React.FC = () => {
       
       setDb(currentDb);
       setIsLoading(false);
-      
-      // Сразу пробуем синхронизироваться с облаком
       performSync(currentDb);
     };
     
     init();
   }, [performSync]);
 
-  // 2. Фоновая проверка обновлений (Polling)
   useEffect(() => {
     const startPolling = () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
@@ -217,7 +249,7 @@ const App: React.FC = () => {
         if (db && syncStatus !== 'syncing' && document.visibilityState === 'visible') {
           performSync(db);
         }
-      }, 20000); // Опрос раз в 20 секунд
+      }, 20000);
     };
 
     startPolling();
@@ -230,14 +262,9 @@ const App: React.FC = () => {
       if (!prev) return prev;
       const next = updater(prev);
       next.timestamp = new Date().toISOString();
-      
-      // Локальное сохранение мгновенно
       idb.set('state', next);
-      
-      // Отложенная отправка в облако
       if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
       syncDebounceRef.current = setTimeout(() => performSync(next), 2000);
-      
       return next;
     });
   }, [performSync]);
