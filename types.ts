@@ -1,5 +1,5 @@
 
-export const APP_VERSION = '2.0.0';
+export const APP_VERSION = '2.0.2';
 export const STANDARD_NAME = 'Zodchiy Enterprise Core';
 
 export enum UserRole {
@@ -150,7 +150,6 @@ export interface AppNotification {
   createdAt: string;
 }
 
-// Missing InvitePayload definition for sharing access
 export interface InvitePayload {
   token: string;
   repo: string;

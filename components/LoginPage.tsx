@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Activity, Users, Eye, Building2, ChevronRight, Lock, User as UserIcon, CheckCircle2, AlertTriangle, ArrowLeft, Settings, Database, Github, Save, CloudOff, RefreshCw } from 'lucide-react';
+import { Shield, Activity, Users, Eye, Building2, ChevronRight, Lock, User as UserIcon, CheckCircle2, AlertTriangle, ArrowLeft, Settings, Database, Github, Save, CloudOff, RefreshCw, Terminal } from 'lucide-react';
 import { User, UserRole, ROLE_LABELS, APP_VERSION } from '../types.ts';
 
 interface LoginPageProps {
@@ -234,8 +234,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin, onApplyInv
             </div>
           )}
 
-          <div className="pt-8 text-center border-t border-slate-200">
-             <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em]">Zodchiy Core • v{APP_VERSION}</p>
+          <div className="pt-8 text-center border-t border-slate-200 flex flex-col items-center gap-2">
+             <div className="flex items-center gap-2 px-3 py-1 bg-slate-900 rounded-lg text-[8px] font-black uppercase tracking-widest text-slate-400">
+               <Terminal size={10} className="text-blue-500" />
+               Zodchiy Core: <span className="text-white">v{APP_VERSION}</span>
+             </div>
+             <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.2em]">ENTERPRISE EDITION • STABLE</p>
           </div>
         </div>
       )}

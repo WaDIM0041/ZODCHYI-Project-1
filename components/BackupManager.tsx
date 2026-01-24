@@ -1,7 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-// Added missing 'Eye' icon to the lucide-react imports
-import { Database, Github, Download, Upload, RefreshCw, CheckCircle2, CloudLightning, Zap, ShieldAlert, Key, AlertTriangle, ShieldCheck, Search, Activity, Terminal, Share2, ClipboardCheck, Copy, Users, Link as LinkIcon, Eye } from 'lucide-react';
+import { 
+  Database, Github, Download, Upload, RefreshCw, CheckCircle2, 
+  CloudLightning, Zap, ShieldAlert, Key, AlertTriangle, ShieldCheck, 
+  Search, Activity, Terminal, Share2, ClipboardCheck, Copy, Users, 
+  Link as LinkIcon, Eye, Info, RotateCw, Sparkles, ChevronRight
+} from 'lucide-react';
 import { User, GithubConfig, AppSnapshot, APP_VERSION, UserRole, ROLE_LABELS, InvitePayload } from '../types.ts';
 import { STORAGE_KEYS } from '../App.tsx';
 
@@ -23,6 +27,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ currentUser, curre
   const [lastError, setLastError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [isHardReloading, setIsHardReloading] = useState(false);
   
   const [selectedInviteRole, setSelectedInviteRole] = useState<UserRole>(UserRole.FOREMAN);
 
@@ -36,6 +41,25 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ currentUser, curre
     ));
   };
 
+  const handleHardReload = async () => {
+    if (!confirm('Внимание: Приложение будет перезагружено, кэш очищен. Все изменения будут синхронизированы. Продолжить?')) return;
+    
+    setIsHardReloading(true);
+    // 1. Сначала пробуем выгрузить последние данные
+    await handlePushToGithub();
+    
+    // 2. Сбрасываем Service Worker
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const registration of registrations) {
+        await registration.unregister();
+      }
+    }
+    
+    // 3. Жесткая перезагрузка
+    window.location.reload();
+  };
+
   const generateInviteLink = () => {
     const payload: InvitePayload = {
       token: ghConfig.token,
@@ -45,7 +69,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ currentUser, curre
       username: currentUser?.username || 'Admin'
     };
     const code = toBase64(JSON.stringify(payload));
-    // Создаем полную ссылку: текущий адрес + параметр invite
     const fullLink = `${window.location.origin}${window.location.pathname}?invite=${code}`;
     
     navigator.clipboard.writeText(fullLink);
@@ -82,7 +105,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ currentUser, curre
       const putRes = await fetch(url, {
         method: 'PUT',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: `Sync v${APP_VERSION}`, content, sha: sha || undefined })
+        body: JSON.stringify({ message: `🛠 Forced Sync v${APP_VERSION}`, content, sha: sha || undefined })
       });
 
       if (putRes.ok) {
@@ -125,16 +148,62 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ currentUser, curre
 
   return (
     <div className="space-y-6 animate-in fade-in pb-16 text-left">
+      {/* Главный блок статуса */}
       <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/20 blur-[80px] -translate-y-1/2 translate-x-1/2"></div>
         <div className="relative z-10 flex flex-col items-center text-center space-y-4">
           <div className="w-16 h-16 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20">
-            <CloudLightning size={32} className="text-blue-400" />
+            {syncStatus === 'loading' ? <RefreshCw className="text-blue-400 animate-spin" size={32} /> : <CloudLightning size={32} className="text-blue-400" />}
           </div>
           <div>
             <h2 className="text-xl font-black uppercase tracking-tighter">Синхронизация</h2>
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Protocol v{APP_VERSION}</p>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Status: {syncStatus.toUpperCase()}</p>
           </div>
+        </div>
+      </div>
+
+      {/* НОВОЕ: Блок принудительного обновления приложения */}
+      <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-[2.5rem] p-6 text-white shadow-xl shadow-blue-200">
+        <div className="flex items-center gap-4 mb-5">
+          <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-md">
+            <Zap size={22} className="text-amber-300" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black uppercase tracking-widest">Инженерное меню</h3>
+            <p className="text-[9px] font-bold text-white/60 uppercase tracking-tighter">Синхронизация и обновление ядра</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          <button 
+            onClick={handlePushToGithub}
+            disabled={syncStatus === 'loading'}
+            className="flex items-center justify-between w-full bg-white/10 hover:bg-white/20 p-5 rounded-2xl border border-white/10 transition-all active:scale-[0.98]"
+          >
+            <div className="flex items-center gap-3">
+              <RefreshCw size={18} className={syncStatus === 'loading' ? 'animate-spin' : ''} />
+              <div className="text-left">
+                <span className="text-[10px] font-black uppercase tracking-widest block">Deep Sync Now</span>
+                <span className="text-[8px] font-bold text-white/50 uppercase tracking-tighter">Мгновенная выгрузка в облако</span>
+              </div>
+            </div>
+            <ChevronRight size={16} className="opacity-40" />
+          </button>
+
+          <button 
+            onClick={handleHardReload}
+            disabled={isHardReloading}
+            className="flex items-center justify-between w-full bg-amber-500 hover:bg-amber-400 p-5 rounded-2xl border border-amber-400 transition-all active:scale-[0.98] text-slate-900"
+          >
+            <div className="flex items-center gap-3">
+              {isHardReloading ? <RotateCw size={18} className="animate-spin" /> : <Sparkles size={18} />}
+              <div className="text-left">
+                <span className="text-[10px] font-black uppercase tracking-widest block">Hard Reload Engine</span>
+                <span className="text-[8px] font-bold text-slate-900/60 uppercase tracking-tighter">Сброс кэша и обновление кода</span>
+              </div>
+            </div>
+            <div className="bg-slate-900/10 px-2 py-1 rounded text-[7px] font-black uppercase">v{APP_VERSION}</div>
+          </button>
         </div>
       </div>
 
@@ -182,7 +251,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ currentUser, curre
             {linkCopied ? <ClipboardCheck size={20} /> : <LinkIcon size={20} />}
             {linkCopied ? 'Ссылка доступа скопирована!' : 'Скопировать ссылку доступа'}
           </button>
-          {!ghConfig.token && <p className="text-[8px] text-rose-500 font-bold text-center uppercase">Сначала настройте GitHub ниже</p>}
         </div>
       </div>
 
@@ -252,15 +320,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({ currentUser, curre
                 onChange={e => setGhConfig({...ghConfig, repo: e.target.value})}
                 className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 text-xs font-bold outline-none" 
                 placeholder="ivanov/zodchiy-cloud"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[9px] font-black text-slate-400 uppercase ml-1">JSON Path</label>
-              <input 
-                type="text" 
-                value={ghConfig.path}
-                onChange={e => setGhConfig({...ghConfig, path: e.target.value})}
-                className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 text-xs font-bold outline-none" 
               />
             </div>
           </div>
